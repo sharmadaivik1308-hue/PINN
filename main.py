@@ -500,6 +500,22 @@ def _run_presplit_pipeline(config: dict) -> dict:
     metrics["best_val_loss"]   = round(min(history["val_total"]), 6)
     metrics["device"]          = str(device)
 
+    # Baseline comparison metrics (A4)
+    metrics["baseline_MAE"]  = baseline_metrics["MAE"]
+    metrics["baseline_RMSE"] = baseline_metrics["RMSE"]
+    metrics["baseline_R2"]   = baseline_metrics["R2"]
+    metrics["beats_baseline_MAE"]  = bool(metrics["MAE"] < baseline_metrics["MAE"])
+    metrics["beats_baseline_RMSE"] = bool(metrics["RMSE"] < baseline_metrics["RMSE"])
+    metrics["beats_baseline_R2"]   = bool(metrics["R2"] > baseline_metrics["R2"])
+
+    print("\n" + "=" * 55)
+    print("  BASELINE COMPARISON [pre-split mode]")
+    print("=" * 55)
+    print(f"  PINN beats mean baseline (R2):   {'YES' if metrics['beats_baseline_R2'] else 'NO'} (PINN: {metrics['R2']:.4f} vs Baseline: {metrics['baseline_R2']:.4f})")
+    print(f"  PINN beats mean baseline (MAE):  {'YES' if metrics['beats_baseline_MAE'] else 'NO'} (PINN: {metrics['MAE']:.4f} vs Baseline: {metrics['baseline_MAE']:.4f})")
+    print(f"  PINN beats mean baseline (RMSE): {'YES' if metrics['beats_baseline_RMSE'] else 'NO'} (PINN: {metrics['RMSE']:.4f} vs Baseline: {metrics['baseline_RMSE']:.4f})")
+    print("=" * 55 + "\n")
+
     # ── Plots ──────────────────────────────────────────────────────────────────
     plot_loss_curves(
         history["train_total"], history["val_total"],
@@ -692,10 +708,11 @@ def run_pipeline(config: dict) -> dict:
     os.makedirs(reports_dir, exist_ok=True)
 
     # ── 2. Load dataset ────────────────────────────────────────────────────────
-    X_raw, y_raw = load_dataset(
+    X_raw, y_raw, groups_raw = load_dataset(
         csv_path      = dataset_cfg["path"],
         target_column = dataset_cfg.get("target_column", "magnitude"),
         drop_columns  = dataset_cfg.get("drop_columns", ["filename"]),
+        return_groups = True,
     )
     original_features = X_raw.columns.tolist()
 
@@ -703,6 +720,8 @@ def run_pipeline(config: dict) -> dict:
     check_missing_values(X_raw)
     X_raw = handle_missing_values(X_raw)
     y_raw = y_raw.loc[X_raw.index]
+    if groups_raw is not None:
+        groups_raw = groups_raw.loc[X_raw.index]
 
     # ── 4. Analyse target distribution ────────────────────────────────────────
     target_stats = analyze_target(y_raw)
@@ -723,12 +742,15 @@ def run_pipeline(config: dict) -> dict:
     print(f"  {feature_names}")
 
     # ── 7. 3-way split ─────────────────────────────────────────────────────────
+    split_strategy = dataset_cfg.get("split_strategy", "event")
     X_train_df, X_val_df, X_test_df, y_train_s, y_val_s, y_test_s = (
         split_data_three_way(
             X_clean, y_raw,
+            groups       = groups_raw.loc[X_clean.index] if groups_raw is not None else None,
             val_size     = dataset_cfg.get("val_size",  0.15),
             test_size    = dataset_cfg.get("test_size", 0.15),
             random_state = dataset_cfg.get("random_state", 42),
+            split_strategy = split_strategy,
         )
     )
 
@@ -890,6 +912,22 @@ def run_pipeline(config: dict) -> dict:
     metrics["best_val_loss"]   = round(min(history["val_total"]), 6)
     metrics["device"]          = str(device)
 
+    # Baseline comparison metrics (A4)
+    metrics["baseline_MAE"]  = baseline_metrics["MAE"]
+    metrics["baseline_RMSE"] = baseline_metrics["RMSE"]
+    metrics["baseline_R2"]   = baseline_metrics["R2"]
+    metrics["beats_baseline_MAE"]  = bool(metrics["MAE"] < baseline_metrics["MAE"])
+    metrics["beats_baseline_RMSE"] = bool(metrics["RMSE"] < baseline_metrics["RMSE"])
+    metrics["beats_baseline_R2"]   = bool(metrics["R2"] > baseline_metrics["R2"])
+
+    print("\n" + "=" * 55)
+    print("  BASELINE COMPARISON")
+    print("=" * 55)
+    print(f"  PINN beats mean baseline (R2):   {'YES' if metrics['beats_baseline_R2'] else 'NO'} (PINN: {metrics['R2']:.4f} vs Baseline: {metrics['baseline_R2']:.4f})")
+    print(f"  PINN beats mean baseline (MAE):  {'YES' if metrics['beats_baseline_MAE'] else 'NO'} ({metrics['MAE']:.4f} vs Baseline: {metrics['baseline_MAE']:.4f})")
+    print(f"  PINN beats mean baseline (RMSE): {'YES' if metrics['beats_baseline_RMSE'] else 'NO'} ({metrics['RMSE']:.4f} vs Baseline: {metrics['baseline_RMSE']:.4f})")
+    print("=" * 55 + "\n")
+
     # ── 17. Plots ──────────────────────────────────────────────────────────────
     plot_loss_curves(
         history["train_total"], history["val_total"],
@@ -974,13 +1012,34 @@ def run_pipeline(config: dict) -> dict:
     # ── 21. Cross-validation ───────────────────────────────────────────────────
     cv_summary = {}
     if cv_cfg.get("enabled", True):
+        if split_strategy == "event":
+            cv_X = X_clean
+            cv_y = y_raw
+            cv_e = (
+                X_clean[energy_col].values if energy_col in X_clean.columns
+                else np.zeros(len(X_clean))
+            )
+            cv_f = (
+                X_clean[freq_col].values if freq_col in X_clean.columns
+                else np.zeros(len(X_clean))
+            )
+            cv_groups = groups_raw.loc[X_clean.index] if groups_raw is not None else None
+        else:
+            cv_X = X_pool_df
+            cv_y = y_pool_s
+            cv_e = raw_energy_pool
+            cv_f = raw_freq_pool
+            cv_groups = None
+
         cv_summary = run_kfold_cv(
-            X_pool             = X_pool_df,
-            y_pool             = y_pool_s,
-            raw_energy_pool    = raw_energy_pool,
-            raw_frequency_pool = raw_freq_pool,
+            X_pool             = cv_X,
+            y_pool             = cv_y,
+            raw_energy_pool    = cv_e,
+            raw_frequency_pool = cv_f,
             model_config       = model_config,
             train_config       = train_config,
+            groups_pool        = cv_groups,
+            split_strategy     = split_strategy,
             k                  = cv_cfg.get("folds", 5),
             scale_target       = scale_tgt,
             device             = device,

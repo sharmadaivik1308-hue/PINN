@@ -19,7 +19,7 @@ import copy
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, LeaveOneGroupOut
 from sklearn.preprocessing import StandardScaler
 from typing import Dict, List, Optional
 
@@ -35,21 +35,30 @@ def run_kfold_cv(
     raw_frequency_pool: np.ndarray,
     model_config: Dict,
     train_config: Dict,
+    groups_pool: Optional[pd.Series] = None,
+    split_strategy: str = "event",
     k: int = 5,
     scale_target: bool = True,
     device: Optional[torch.device] = None,
     random_state: int = 42,
 ) -> Dict:
-    """Run k-fold cross-validation on the training pool.
+    """Run cross-validation on the dataset pool.
+
+    Supports:
+        - "event": LeaveOneGroupOut (12 folds) so each fold holds out one entire
+          earthquake event. Completely eliminates cross-station event leakage.
+        - "random": Standard random K-fold (LEAKY comparator).
 
     Args:
-        X_pool:               Combined train+val features (DataFrame).
-        y_pool:               Combined train+val targets (Series).
+        X_pool:               Features (DataFrame).
+        y_pool:               Targets (Series).
         raw_energy_pool:      Raw energy values aligned with X_pool.
         raw_frequency_pool:   Raw spectral centroid values aligned with X_pool.
         model_config:         Model architecture config dict.
         train_config:         Training hyperparameter config dict.
-        k:                    Number of folds.
+        groups_pool:          Event IDs per row (required for "event" strategy).
+        split_strategy:       "event" (default, LeaveOneGroupOut) | "random" (leaky).
+        k:                    Number of folds (used only if split_strategy == "random").
         scale_target:         Apply StandardScaler to target (recommended).
         device:               Torch device.
         random_state:         Seed for KFold shuffle.
@@ -60,8 +69,6 @@ def run_kfold_cv(
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    kf = KFold(n_splits=k, shuffle=True, random_state=random_state)
-
     X_arr   = X_pool.values
     y_arr   = y_pool.values.flatten()
     e_arr   = np.asarray(raw_energy_pool).flatten()
@@ -69,13 +76,29 @@ def run_kfold_cv(
 
     fold_results: List[Dict] = []
 
-    print(f"\n[CV] Starting {k}-fold cross-validation on training pool "
-          f"({len(X_arr)} samples)")
-    print("[CV] Test set is excluded — not used in any fold.")
+    if split_strategy == "event":
+        if groups_pool is None:
+            raise ValueError("[CV] split_strategy='event' requires groups_pool (event IDs).")
+        groups_arr = groups_pool.values.flatten()
+        logo = LeaveOneGroupOut()
+        splits = list(logo.split(X_arr, y_arr, groups=groups_arr))
+        n_folds = len(splits)
+        print(f"\n[CV] Starting Leave-One-Group-Out ({n_folds} folds) Cross-Validation [EVENT-BASED]")
+        print("[CV] Each fold evaluates generalization to a completely unseen earthquake event.")
+    else:
+        kf = KFold(n_splits=k, shuffle=True, random_state=random_state)
+        splits = list(kf.split(X_arr))
+        n_folds = k
+        print(f"\n[CV] Starting {k}-fold Cross-Validation [STRATEGY: RANDOM - ⚠️ LEAKY]")
+        print("[CV] WARNING: Random fold splitting leaks recordings of the same earthquake into train and val!")
 
-    for fold_idx, (tr_idx, va_idx) in enumerate(kf.split(X_arr), 1):
-        print(f"\n[CV] ── Fold {fold_idx}/{k} "
-              f"(train={len(tr_idx)}, val={len(va_idx)}) ──────────────")
+    for fold_idx, (tr_idx, va_idx) in enumerate(splits, 1):
+        fold_desc = f"Fold {fold_idx}/{n_folds} (train={len(tr_idx)}, val={len(va_idx)})"
+        if split_strategy == "event":
+            val_ev = groups_arr[va_idx][0]
+            val_mag = y_arr[va_idx][0]
+            fold_desc += f" | held-out event={val_ev} (M={val_mag})"
+        print(f"\n[CV] ── {fold_desc} ──────────────")
 
         X_cv_tr, X_cv_va = X_arr[tr_idx], X_arr[va_idx]
         y_cv_tr, y_cv_va = y_arr[tr_idx], y_arr[va_idx]

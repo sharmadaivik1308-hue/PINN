@@ -15,7 +15,7 @@ Design guarantees:
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
 from typing import Tuple, Optional
 
@@ -55,53 +55,87 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 def split_data_three_way(
     X: pd.DataFrame,
     y: pd.Series,
+    groups: Optional[pd.Series] = None,
     val_size: float  = 0.15,
     test_size: float = 0.15,
     random_state: int = 42,
+    split_strategy: str = "event",
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame,
            pd.Series,    pd.Series,    pd.Series]:
-    """Split data into three completely independent sets.
+    """Split data into three independent sets.
 
-    Procedure:
-        Step 1 — hold out test set (test_size fraction of total).
-        Step 2 — split remainder into train / val proportionally.
-
-    The test set is NEVER used for model selection, early stopping, or
-    LR scheduling.  It is evaluated exactly once at the end.
+    Supports:
+        - "event": GroupShuffleSplit by event_id so recordings from the same
+          earthquake event NEVER appear in multiple splits (prevents data leakage).
+        - "random": Unstratified random row split (LEAKY: recordings of the same
+          earthquake event land in both train and test).
 
     Args:
-        X:            Feature DataFrame.
-        y:            Target Series.
-        val_size:     Fraction of TOTAL data allocated to validation.
-        test_size:    Fraction of TOTAL data allocated to test.
-        random_state: Reproducibility seed.
+        X:              Feature DataFrame.
+        y:              Target Series.
+        groups:         Event identifiers (required for "event" strategy).
+        val_size:       Fraction of data/groups allocated to validation.
+        test_size:      Fraction of data/groups allocated to test.
+        random_state:   Reproducibility seed.
+        split_strategy: "event" (default, valid) | "random" (leaky comparator).
 
     Returns:
         (X_train, X_val, X_test, y_train, y_val, y_test)
     """
     total = len(X)
 
-    # Step 1: carve out test
-    X_temp, X_test, y_temp, y_test = train_test_split(
-        X, y,
-        test_size=test_size,
-        random_state=random_state,
-        shuffle=True,
-    )
+    if split_strategy == "event":
+        if groups is None:
+            raise ValueError(
+                "[Preprocess] split_strategy='event' requires 'groups' (event IDs)."
+            )
+        print(f"\n[Preprocess] 3-Way Split [STRATEGY: EVENT-BASED (no station/event leakage)] (N = {total}):")
 
-    # Step 2: split val from the remainder
-    val_frac = val_size / (1.0 - test_size)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_temp, y_temp,
-        test_size=val_frac,
-        random_state=random_state + 1,
-        shuffle=True,
-    )
+        # Step 1: Carve out test events using GroupShuffleSplit
+        gss_test = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+        train_val_idx, test_idx = next(gss_test.split(X, y, groups))
 
-    print(f"\n[Preprocess] 3-Way Split  (N = {total}):")
-    print(f"  Train  : {len(X_train):>5}  ({len(X_train)/total*100:.1f}%)")
-    print(f"  Val    : {len(X_val):>5}  ({len(X_val)/total*100:.1f}%)")
-    print(f"  Test   : {len(X_test):>5}  ({len(X_test)/total*100:.1f}%)  ← held out")
+        # Step 2: Carve out val events from train_val pool
+        val_frac = val_size / (1.0 - test_size)
+        gss_val = GroupShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state + 1)
+        tr_sub, val_sub = next(gss_val.split(
+            X.iloc[train_val_idx], y.iloc[train_val_idx], groups.iloc[train_val_idx]
+        ))
+        train_idx = train_val_idx[tr_sub]
+        val_idx   = train_val_idx[val_sub]
+
+        X_train, X_val, X_test = X.iloc[train_idx], X.iloc[val_idx], X.iloc[test_idx]
+        y_train, y_val, y_test = y.iloc[train_idx], y.iloc[val_idx], y.iloc[test_idx]
+
+        train_ev = sorted(groups.iloc[train_idx].unique())
+        val_ev   = sorted(groups.iloc[val_idx].unique())
+        test_ev  = sorted(groups.iloc[test_idx].unique())
+
+        print(f"  Train : {len(X_train):>5} rows ({len(X_train)/total*100:.1f}%) | {len(train_ev)} events: {train_ev}")
+        print(f"  Val   : {len(X_val):>5} rows ({len(X_val)/total*100:.1f}%) | {len(val_ev)} events: {val_ev}")
+        print(f"  Test  : {len(X_test):>5} rows ({len(X_test)/total*100:.1f}%) | {len(test_ev)} events: {test_ev}  ← held out")
+    else:
+        print(f"\n[Preprocess] 3-Way Split [STRATEGY: RANDOM - ⚠️ LEAKY (recordings of same event in train and test)] (N = {total}):")
+        # Step 1: carve out test
+        X_temp, X_test, y_temp, y_test = train_test_split(
+            X, y,
+            test_size=test_size,
+            random_state=random_state,
+            shuffle=True,
+        )
+
+        # Step 2: split val from remainder
+        val_frac = val_size / (1.0 - test_size)
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_temp, y_temp,
+            test_size=val_frac,
+            random_state=random_state + 1,
+            shuffle=True,
+        )
+
+        print(f"  Train  : {len(X_train):>5}  ({len(X_train)/total*100:.1f}%) [LEAKY]")
+        print(f"  Val    : {len(X_val):>5}  ({len(X_val)/total*100:.1f}%) [LEAKY]")
+        print(f"  Test   : {len(X_test):>5}  ({len(X_test)/total*100:.1f}%) [LEAKY] ← held out")
 
     return X_train, X_val, X_test, y_train, y_val, y_test
 

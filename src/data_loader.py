@@ -11,33 +11,44 @@ import pandas as pd
 from typing import List, Optional, Tuple
 
 
+def extract_event_id(filename: str) -> str:
+    """Extract event timestamp identifier (YYMMDDHHMM) from seismic filename.
+
+    In K-NET filenames (e.g. YMG0190509041906.UD), the event timestamp is
+    the 10 digits (YYMMDDHHMM) immediately preceding the channel extension (.UD).
+    """
+    base = str(filename).split(".")[0]
+    return base[-10:]
+
+
 def load_dataset(
     csv_path: str,
     target_column: str = "magnitude",
     drop_columns: Optional[List[str]] = None,
-) -> Tuple[pd.DataFrame, pd.Series]:
+    return_groups: bool = False,
+) -> Tuple:
     """Load the earthquake dataset and separate features from target.
 
-    Reads the CSV file, drops specified columns (e.g., non-predictive
-    identifiers and degenerate features), and splits the data into
-    input features (X) and target (y).
+    Reads the CSV file, extracts event_id groups if filename is present,
+    drops specified columns, and splits the data into input features (X)
+    and target (y).
 
     Args:
         csv_path: Path to the earthquake CSV file.
         target_column: Name of the target column (default 'magnitude').
-        drop_columns: List of column names to drop before feature
-                      extraction. If None, only 'filename' is dropped.
+        drop_columns: List of column names to drop before feature extraction.
+        return_groups: If True, also returns the event_id Series (groups).
 
     Returns:
-        A tuple (X, y) where:
-            X: DataFrame of input features.
-            y: Series of target values.
-
-    Raises:
-        FileNotFoundError: If the CSV file does not exist.
-        KeyError: If the target column is missing.
+        (X, y) if return_groups is False, else (X, y, groups)
     """
     df = pd.read_csv(csv_path)
+
+    # Extract event groups before dropping filename
+    groups = None
+    if "filename" in df.columns:
+        groups = df["filename"].apply(extract_event_id)
+        groups.name = "event_id"
 
     # Default: drop 'filename' if no explicit list provided
     if drop_columns is None:
@@ -60,7 +71,11 @@ def load_dataset(
     y = df[target_column]
 
     print(f"[Data Loader] Dataset loaded: {X.shape[0]} samples, {X.shape[1]} features")
+    if groups is not None:
+        print(f"[Data Loader] Unique earthquake events extracted: {groups.nunique()}")
     print(f"[Data Loader] Target range: {y.min():.2f} - {y.max():.2f}")
     print(f"[Data Loader] Features: {X.columns.tolist()}")
 
+    if return_groups:
+        return X, y, groups
     return X, y

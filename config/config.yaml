@@ -20,6 +20,7 @@ dataset:
   val_size: 0.15
   test_size: 0.15
   random_state: 42
+  split_strategy: "event"         # "event" (default, valid GroupShuffleSplit) | "random" (leaky)
 
   # Target scaling: strongly recommended — only 11 unique magnitude values
   scale_target: true
