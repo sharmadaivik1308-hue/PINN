@@ -1,10 +1,16 @@
 {
-    "MAE": 0.494007,
-    "RMSE": 0.606174,
-    "R2": 0.014694,
-    "training_time_seconds": 436.49,
+    "MAE": 0.139322,
+    "RMSE": 0.171292,
+    "R2": -1.934132,
+    "training_time_seconds": 10.05,
     "num_parameters": 8778,
-    "actual_epochs": 147,
-    "best_val_loss": 0.966317,
-    "device": "cpu"
+    "actual_epochs": 54,
+    "best_val_loss": 0.359116,
+    "device": "cpu",
+    "baseline_MAE": 0.099742,
+    "baseline_RMSE": 0.136131,
+    "baseline_R2": -0.853171,
+    "beats_baseline_MAE": false,
+    "beats_baseline_RMSE": false,
+    "beats_baseline_R2": false
 }

@@ -64,13 +64,20 @@ def energy_magnitude_loss(
 
     # Default: "correlation" mode (proportionality without scale/offset assumptions)
     # Standardise both to zero-mean, unit-variance across the batch
-    log_e_mean = log_energy.mean()
-    log_e_std = log_energy.std() + epsilon
-    log_e_norm = (log_energy - log_e_mean) / log_e_std
+    if pred_mag.numel() <= 1:
+        return (pred_magnitude * 0.0).sum()
 
-    pred_mean = pred_mag.mean()
-    pred_std = pred_mag.std() + epsilon
-    pred_norm = (pred_mag - pred_mean) / pred_std
+    log_e_var = torch.var(log_energy, unbiased=False)
+    pred_var = torch.var(pred_mag, unbiased=False)
+
+    if log_e_var < 1e-7 or pred_var < 1e-7:
+        return (pred_magnitude * 0.0).sum()
+
+    log_e_std = torch.sqrt(log_e_var + 1e-6)
+    pred_std = torch.sqrt(pred_var + 1e-6)
+
+    log_e_norm = (log_energy - log_energy.mean()) / log_e_std
+    pred_norm = (pred_mag - pred_mag.mean()) / pred_std
 
     # MSE between normalised variables = 2 * (1 - Pearson_r)
     loss = torch.mean((log_e_norm - pred_norm) ** 2)

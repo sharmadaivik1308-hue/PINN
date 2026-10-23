@@ -58,23 +58,25 @@ def frequency_magnitude_loss(
         Scalar tensor: mean squared constraint violation.
     """
     pred_mag = pred_magnitude.squeeze()
+    if pred_mag.numel() <= 1:
+        return (pred_magnitude * 0.0).sum()
 
     # Compute −log(frequency) as the physics-implied quantity
     neg_log_freq = -torch.log(raw_frequency + epsilon)
 
-    # Standardise both to zero-mean, unit-variance
-    freq_mean = neg_log_freq.mean()
-    freq_std = neg_log_freq.std() + epsilon
-    freq_norm = (neg_log_freq - freq_mean) / freq_std
+    freq_var = torch.var(neg_log_freq, unbiased=False)
+    pred_var = torch.var(pred_mag, unbiased=False)
 
-    pred_mean = pred_mag.mean()
-    pred_std = pred_mag.std() + epsilon
-    pred_norm = (pred_mag - pred_mean) / pred_std
+    if freq_var < 1e-7 or pred_var < 1e-7:
+        return (pred_magnitude * 0.0).sum()
+
+    freq_std = torch.sqrt(freq_var + 1e-6)
+    pred_std = torch.sqrt(pred_var + 1e-6)
+
+    freq_norm = (neg_log_freq - neg_log_freq.mean()) / freq_std
+    pred_norm = (pred_mag - pred_mag.mean()) / pred_std
 
     # Penalise deviation from proportionality: M ∝ −log(f)
-    # Both normalised, so the expected relationship is 1:1
     residual = pred_norm - freq_norm
-
     loss = torch.mean(residual ** 2)
-
     return loss

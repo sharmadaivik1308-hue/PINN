@@ -10,6 +10,7 @@ dataset:
   path: data/earthquake_29_features.csv
   random_state: 42
   scale_target: true
+  split_strategy: event
   target_column: magnitude
   test_size: 0.15
   val_size: 0.15
@@ -36,10 +37,12 @@ physics:
   annealing: false
   enabled: true
   energy_coeff_a: 1.5
-  energy_coeff_b: 4.8
+  energy_coeff_b: -3.8633
   energy_feature: energy
+  energy_mode: correlation
   epsilon: 1.0e-08
   experiment: energy
+  fit_intercept_on_train: true
   frequency_feature: spectral_centroid
   lambda_energy: 0.1
   lambda_frequency: 0.0

@@ -85,7 +85,7 @@ def detect_degenerate_features(
     # Check for specific known extraction bugs (C1)
     zero_freq_features = [f for f in ["dominant_freq", "predominant_period"] if f in removal_reasons]
     if zero_freq_features:
-        print(f"\n[FeatureAudit] ⚠️ WARNING: {zero_freq_features} are 0.0 for all rows (extraction bug in upstream dataset).")
+        print(f"\n[FeatureAudit] [!] WARNING: {zero_freq_features} are 0.0 for all rows (extraction bug in upstream dataset).")
         print("  -> Raw waveforms not present in repo; frequency constraint must rely on 'spectral_centroid' proxy.")
 
     print(f"\n[FeatureAudit] Degenerate scan — {len(X.columns)} features checked")

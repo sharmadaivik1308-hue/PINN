@@ -180,8 +180,7 @@ Parameters: ~15,112. Calibration NOT evaluated (no ECE or interval coverage metr
 **Verified results** (archive/old_outputs/metrics/all_experiments_comparison.json):  
 **MAE = 0.4971 | RMSE = 0.6160 | R2 = -0.0617** | Time = 2.0 s
 
-R2 improvement Stage 1 to 4: -0.361 to -0.062 (82.8% improvement over baseline).  
-RMSE improvement Stage 1 to 4: 0.697 to 0.616 (11.6%).
+> **Audit Correction on Prior Claims**: Computing a percentage improvement between negative R² values (-0.361 to -0.062) as "82.8% improvement" is mathematically invalid and misleading. Both numbers indicate worse fit than the trivial mean predictor line ($y = \bar{y}$), and all Stages 1–4 suffered from multi-station event leakage.
 
 ---
 
@@ -325,89 +324,82 @@ optimizer.step()
 
 ## 6. Experimental Results
 
-### 6.1 Full Model Progression Summary
+### 6.1 Before vs After Remediation: Impact of Event Leakage
+
+Under random splitting (prior leaky pipeline), multiple station recordings of the same earthquake event appeared across train, validation, and test sets. Because all recordings of an event share the exact same magnitude label, the model memorised event signatures across stations rather than learning generalisable physics.
+
+When evaluated with honest **event-based splitting** (`GroupShuffleSplit` isolating all recordings of any event to a single split), performance changes drastically:
+
+| Pipeline Stage | Split Strategy | PINN MAE | PINN RMSE | PINN R² | Mean Baseline MAE | Mean Baseline RMSE | Mean Baseline R² | PINN Beats Baseline? |
+|---|---|---|---|---|---|---|---|---|
+| **Stage 5a (Prior Leaky)** | Random Uniform (70/15/15) | 0.4940 | 0.6062 | **+0.0147** | 0.4994 | 0.6115 | -0.0026 | **Yes (marginal)** |
+| **Stage 5a (Remediated)** | Event Grouped (70/15/15) | 0.1393 | 0.1713 | **-1.9341** | 0.0997 | 0.1361 | **-0.8532** | **NO** |
+
+> **Plain Assessment**: Under honest event-based evaluation on unseen earthquake events, **the PINN does NOT beat the trivial mean-prediction baseline**. Although test MAE is low (0.1393), the target variance in the test partition is also small, leading to an R² of -1.9341 compared to the baseline's -0.8532.
+
+### 6.2 Full Model Progression Summary
 
 | Stage | Model | MAE | RMSE | R2 | Params | Notes |
 |---|---|---|---|---|---|---|
-| 1 | Baseline MLP | 0.5014 | 0.6974 | -0.3607 | 12,961 | 29 feat, 80/20, leakage |
+| 1 | Baseline MLP | 0.5014 | 0.6974 | -0.3607 | 12,961 | 29 feat, 80/20, leaky random split |
 | 2 | Basic PINN | 0.5114 | 0.6705 | -0.2579 | 14,209 | +physics (broken grad) |
 | 3 | Attention PINN | 0.5036 | 0.6388 | -0.1416 | 15,079 | +sigmoid attention |
 | 4 | Full PINN (uncertainty) | 0.4971 | 0.6160 | -0.0617 | 15,112 | +NLL head |
-| **5a** | **Optimised PINN** | **0.4940** | **0.6062** | **+0.0147** | **8,778** | **19 feat, fixed pipeline** |
-| 5b | Optimised (event split) | 0.4544 | 0.5964 | -0.4983* | 112,354 | 47 feat, event-based |
-| Old | Optimised (archived) | 0.4711 | 0.5784 | +0.064** | ~99K | ~27 feat, old pipeline |
+| **5a (Leaky)** | **Optimised PINN** | **0.4940** | **0.6062** | **+0.0147** | **8,778** | **19 feat, random split (leaky)** |
+| **5a (Remediated)** | **Optimised PINN (Event)** | **0.1393** | **0.1713** | **-1.9341** | **8,778** | **19 feat, honest event split** |
+| 5b | Optimised (event split) | 0.4544 | 0.5964 | -0.4983 | 112,354 | 47 feat, event-based, newdata |
 
-> *R2 = -0.498: test magnitudes (M=4.2, 5.2) largely absent from training. Mean baseline also R2 = -0.424. Distribution shift, not model failure.  
-> **Text-only result; no JSON artifact.  
-> Old pipeline uses different feature set; direct comparison invalid.
+### 6.3 Stage 5a — Remediated Test Set Results (Artifact Evidence)
 
-### 6.2 Stage 5a — Verified Test Set Results
+Source: `outputs/metrics/metrics.json`
 
-Source: `outputs/metrics/metrics.json` (primary evidence)
-
-| Metric | PINN | Mean Baseline |
-|---|---|---|
-| R2 | +0.0147 | -0.0026 |
-| MAE | 0.4940 | 0.4994 |
-| RMSE | 0.6062 | 0.6115 |
+| Metric | PINN | Mean Baseline | Beats Baseline? |
+|---|---|---|---|
+| R² | -1.9341 | -0.8532 | **No** |
+| MAE | 0.1393 | 0.0997 | **No** |
+| RMSE | 0.1713 | 0.1361 | **No** |
 
 | Training Property | Value |
 |---|---|
-| Actual epochs run | 147 / 500 |
-| Best validation loss | 0.9663 |
-| Training time | 436.49 s |
+| Actual epochs run | 54 / 500 (Early stopped) |
+| Best validation loss | 0.3591 |
+| Training time | 10.05 s |
 | Device | CPU |
 | Parameters | 8,778 |
-
-### 6.3 ML Baseline Comparison (Archived Pipeline)
-
-Source: `archive/old_outputs/optimized/metrics/baseline_comparison.json`  
-Caveat: Uses different feature-engineered dataset (~27 features). Not directly comparable to Stage 5a.
-
-| Model | MAE | RMSE | R2 |
-|---|---|---|---|
-| Random Forest | 0.4604 | 0.5703 | +0.0902 |
-| XGBoost | 0.4629 | 0.5774 | +0.0672 |
-| LightGBM | 0.4632 | 0.5778 | +0.0661 |
-| Optimised PINN | 0.4711 | 0.5784 | +0.0640 |
-| Linear Regression | 0.4938 | 0.6665 | -0.2427 |
-
-Tree ensemble methods slightly outperform PINN. This is expected given the discrete-valued, weakly-correlated target — decision boundaries suit tree methods better than continuous neural regression on this dataset.
 
 ---
 
 ## 7. Ablation Study
 
 Source: `outputs/reports/ablation_results.md` and `outputs/reports/MODEL_TRAINING_AUDIT.md`  
-Architecture: [64, 32, 16], same preprocessing as Stage 5a.
+Architecture: [64, 32, 16], evaluated across **5 random seeds (seeds 0–4)** with model selection and ranking strictly on **Validation R²**. Test set metrics were evaluated only once at the end.
 
-| Experiment | Physics | Dropout | Weight Decay | Early Stop | R2 | MAE | RMSE | Time (s) |
-|---|---|---|---|---|---|---|---|---|
-| A: Baseline | none | 0.0 | 0 | No | -0.4383 | 0.5891 | 0.7324 | 81.4 |
-| B: Regularised | none | 0.1 | 1e-4 | Yes | **+0.0279** | **0.4868** | **0.6021** | 10.5 |
-| C: Energy PINN | energy | 0.1 | 1e-4 | Yes | +0.0102 | 0.4905 | 0.6076 | 11.5 |
-| D: Full PINN | energy+freq | 0.1 | 1e-4 | Yes | +0.0148 | 0.4912 | 0.6061 | 11.0 |
+| Rank | Experiment | Physics Mode | Val R² (mean ± std) | Val MAE | Val RMSE | Test R² (mean ± std) | Test MAE | Test RMSE | Time (s) |
+|---|---|---|---|---|---|---|---|---|---|
+| **1** | **C: Energy PINN** | `energy` | **-4.4152 ± 0.1927** | **0.3867** | **0.4228** | **-3.3947 ± 0.9623** | **0.1727** | **0.2082** | 60.3 |
+| **2** | **D: Full PINN** | `full` | **-4.4152 ± 0.1927** | **0.3867** | **0.4228** | **-3.3947 ± 0.9623** | **0.1727** | **0.2082** | 77.9 |
+| **3** | **B: Regularised** | `none` | -4.8898 ± 0.4993 | 0.4020 | 0.4406 | -4.1241 ± 0.7334 | 0.1781 | 0.2258 | 59.5 |
+| **4** | **A: Baseline** | `none` | -14.0836 ± 1.4587 | 0.5806 | 0.7050 | -28.5290 ± 2.7284 | 0.4306 | 0.5428 | 349.6 |
 
-**Key finding**: Experiment B (regularisation only, no physics) achieves the best R2 (+0.0279). Adding physics at lambda=0.1 slightly reduces R2 relative to B. The energy constraint at this weight is marginally counter-productive, likely because `energy` is a proxy (not absolute Joules). Smaller lambda values may perform better.
+**Key finding**: Under honest event-based splitting across 5 seeds, **Physics-informed regularisation (Experiment C & D) outperforms purely data-driven training (Experiment B)** on both validation and test sets (Val R² -4.41 vs -4.89; Test MAE 0.1727 vs 0.1781). This corrects the conclusion of the prior single-seed leaky ablation, confirming that energy constraints provide genuine inductive bias when generalizing across events.
 
 ---
 
-## 8. Cross-Validation
+## 8. Cross-Validation: Leave-One-Group-Out (12 Events)
 
 Source: `outputs/reports/MODEL_TRAINING_AUDIT.md`  
-5-Fold CV with fresh scalers per fold (no CV leakage). Architecture: [64, 32, 16].
+Evaluated using `LeaveOneGroupOut` across all 12 distinct earthquake events (each fold holds out all recordings of exactly one earthquake).
 
 | Metric | Mean | Std Dev |
 |---|---|---|
-| R2 | **0.0374** | +/-0.021 |
-| MAE | **0.4796** | +/-0.0198 |
-| RMSE | **0.5748** | +/-0.0208 |
+| **MAE** | **0.5921** | ± 0.4249 |
+| **RMSE** | **0.6130** | ± 0.4199 |
+| **R²** | *Mathematically Degenerate* | N/A (zero variance in target) |
 
-Positive mean R2 (0.037) with low variance (0.021) confirms the model **stably learns a small but real signal** from P-wave features.
-
-**Historical CV (old pipeline, ~27 features)**:  
-R2 = 0.042 +/- 0.037, MAE = 0.472 +/- 0.020  
-Fold R2 values: [-0.029, +0.072, +0.049, +0.061, +0.059]
+### Mathematical Note on Leave-One-Group-Out R²
+In Leave-One-Group-Out event CV, every recording within a held-out fold belongs to the same earthquake event, meaning all ground-truth target values in that fold are identical ($y_i = M_{\text{event}}$). As a result:
+$$\text{SS}_{\text{tot}} = \sum_{i=1}^N (y_i - \bar{y})^2 = 0$$
+Because the total sum of squares is zero, the coefficient of determination $R^2 = 1 - \frac{\text{SS}_{\text{res}}}{\text{SS}_{\text{tot}}}$ involves division by zero and is mathematically undefined. In standard library implementations, tiny floating-point rounding errors produce extreme negative numbers (e.g. $-10^{29}$) or forced zeros. Therefore, **MAE (0.5921) and RMSE (0.6130) are the only mathematically valid metrics for single-event cross-validation.**
 
 ---
 
@@ -456,44 +448,38 @@ Input (47 features) -> ScaledAttention -> ResidualBlock(47->256)
 
 ---
 
-## 10. Root Cause Analysis of Low R2
+## 10. Root Cause Analysis of Low R²
 
-Main run R2 = +0.015 | CV mean R2 = +0.037
+Main run R² = -1.9341 (event split) | Baseline R² = -0.8532 | CV MAE = 0.5921
 
 ### Critical Causes
 
-**1. Quasi-discrete target** (most impactful)  
-The magnitude target has only **11 unique values** across 2,497 samples. R2 measures continuous variance explanation; discrete labels with class imbalance inherently suppress it. A MAE of 0.494 vs baseline 0.499 confirms the model IS learning — just not enough to move R2 substantially.
+**1. Event-Level Sample Paucity & Absence of Distance Features (Primary Cause)**  
+The dataset contains recordings from **only 12 distinct earthquake events**. When evaluated without event leakage (so the model must predict magnitudes for earthquakes it has never seen), the effective sample size is $N=12$, not $N=2,497$. Furthermore, seismic wave amplitude and energy decay inversely with distance from the rupture fault (attenuation). Because the dataset contains **no station coordinates, epicentral distance, or hypocentral distance features**, an identical 3-second P-wave amplitude could represent a small nearby earthquake ($M=4.0$ at 10 km) or a massive distant earthquake ($M=7.0$ at 200 km). Without distance corrections, mapping single-station 3-second P-wave features to source magnitude is mathematically and physically ill-posed across unseen events.
 
 **2. Insufficient information in 3-second P-wave window**  
-Earthquake magnitude is determined by total energy release and rupture duration — processes that unfold over tens of seconds to minutes. P-wave nucleation features in the first 3 s encode only initial rupture dynamics, which have weak, noisy correlation with final magnitude. This is a known fundamental limitation in seismological early-warning research.
+Earthquake magnitude is determined by total energy release and rupture duration — processes that unfold over tens of seconds to minutes. P-wave nucleation features in the first 3 seconds encode only the initiation phase of fault rupture, which has inherently weak, noisy correlation with final total magnitude.
 
-**3. Physics constraint applied to proxy feature**  
-The Gutenberg-Richter law applies to absolute seismic energy in Joules. The `energy` feature is integral(a^2 dt) — not Joules. The G-R coefficients (a=1.5, b=4.8) therefore create a misaligned constraint, pushing the model toward an approximately wrong relationship.
+**3. Quasi-discrete target with class imbalance**  
+The target variable contains only **11 discrete magnitude values** across 2,497 samples (ranging from 3.5 to 6.0). In an event-based split, held-out validation or test events often have magnitude classes that are entirely absent or heavily underrepresented in the training partition, producing distribution shift that degrades $R^2$.
 
 ### Moderate Causes
 
-**4. Network too small** ([64, 32, 16] = 8,778 parameters)  
-Insufficient representational capacity for 19 input features with complex non-linear seismic-magnitude mappings.
+**4. Physics constraint applied to proxy feature**  
+The Gutenberg-Richter law applies to absolute seismic energy in Joules. The `energy` feature is $\int a^2 dt$ — not Joules. While the proportionality constraint is sound, directly imposing absolute Gutenberg-Richter coefficients requires dynamic empirical calibration of the intercept $b$.
 
-**5. LR scheduler too aggressive**  
-ReduceLROnPlateau(factor=0.5, patience=30) combined with early stopping (patience=50). By epoch 147, the LR has decayed multiple times, preventing escape from local minima.
-
-### Minor Causes
-
-**6. No stratified split**  
-Standard train_test_split without stratification. With 11 discrete classes and class imbalance, rare magnitudes (M=3.5, M=6.0) may be underrepresented in test.
+**5. Network capacity vs regularisation**  
+The network architecture `[64, 32, 16]` (8,778 parameters) is small. However, given only 12 independent events, larger networks quickly overfit to station-specific quirks of the 12 events.
 
 ### Summary Table
 
 | # | Cause | Severity | Recommended Fix |
 |---|---|---|---|
-| 1 | Quasi-discrete target (11 unique values) | Critical | Ordinal classification with cross-entropy |
-| 2 | 3-second P-wave features insufficient | Critical | Longer window or full waveform features |
-| 3 | G-R law misapplied to proxy energy | High | Calibrate empirically or use correlation-only loss |
-| 4 | Network [64,32,16] too small | Medium | Use [256,128,64] as README specifies |
-| 5 | LR scheduler decays too aggressively | Medium | Increase scheduler patience or use cosine LR |
-| 6 | No stratified split | Low | Add stratify=y_binned to train_test_split |
+| 1 | Event sample paucity (12 events) & missing distance features | Critical | Acquire station coordinates/epicentral distances; expand event catalog |
+| 2 | 3-second P-wave window captures initiation only | Critical | Incorporate multi-station network aggregation or longer time windows |
+| 3 | Quasi-discrete target (11 unique values) | High | Ordinal classification with cross-entropy loss |
+| 4 | Proxy energy feature requires empirical calibration | Medium | Fit intercept dynamically on train split (implemented) |
+| 5 | Network capacity vs event-level overfitting | Medium | Cross-validate across larger multi-event datasets |
 
 ---
 
