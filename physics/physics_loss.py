@@ -25,8 +25,9 @@ def compute_physics_loss(
     raw_frequency:    torch.Tensor,
     lambda_energy:    float = 0.1,
     lambda_frequency: float = 0.0,
+    energy_mode:      str   = "correlation",
     energy_coeff_a:   float = 1.5,
-    energy_coeff_b:   float = 4.8,
+    energy_coeff_b:   float = -3.8633,
     epsilon:          float = 1e-8,
     experiment:       str   = "energy",
 ) -> Dict[str, torch.Tensor]:
@@ -34,8 +35,7 @@ def compute_physics_loss(
 
     The loss is computed ON THE CURRENT BATCH so that gradients are
     correctly aligned with the data-loss gradients in the same backward
-    pass.  This replaces the original design that used a separate
-    full-dataset backward pass (which wiped data gradients).
+    pass.
 
     Args:
         pred_magnitude:   Predicted magnitudes — shape (batch, 1) or (batch,).
@@ -43,18 +43,14 @@ def compute_physics_loss(
         raw_frequency:    Raw spectral centroid values   — shape (batch,).
         lambda_energy:    Weight applied to energy constraint.
         lambda_frequency: Weight applied to frequency constraint.
-        energy_coeff_a:   Coefficient a in log₁₀(E) = a·M + b.
-        energy_coeff_b:   Coefficient b (kept for API compatibility).
+        energy_mode:      "correlation" (Pearson proxy) | "gr_absolute" (G-R scaling).
+        energy_coeff_a:   Slope a in log₁₀(E) = a·M + b.
+        energy_coeff_b:   Intercept b in log₁₀(E) = a·M + b (used in gr_absolute).
         epsilon:          Numerical stability constant.
         experiment:       "none" | "energy" | "full".
 
     Returns:
-        Dict with keys:
-            energy_loss_raw    — Unweighted energy constraint loss (scalar).
-            frequency_loss_raw — Unweighted frequency constraint loss (scalar).
-            energy_loss        — Weighted energy loss.
-            frequency_loss     — Weighted frequency loss.
-            total_physics_loss — Sum of all weighted losses.
+        Dict with weighted and unweighted loss components.
     """
     dev = pred_magnitude.device
 
@@ -64,6 +60,7 @@ def compute_physics_loss(
     if experiment in ("energy", "full"):
         loss_e_raw = energy_magnitude_loss(
             pred_magnitude, raw_energy,
+            energy_mode=energy_mode,
             coeff_a=energy_coeff_a,
             coeff_b=energy_coeff_b,
             epsilon=epsilon,

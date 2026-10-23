@@ -437,6 +437,14 @@ def _run_presplit_pipeline(config: dict) -> dict:
     if not physics_cfg.get("enabled", True):
         physics_exp = "none"
 
+    coeff_a = physics_cfg.get("energy_coeff_a", 1.5)
+    coeff_b = physics_cfg.get("energy_coeff_b", -3.8633)
+    if physics_cfg.get("fit_intercept_on_train", True) and phys_raw_col in train_df.columns:
+        train_log_e = train_df[phys_raw_col].values
+        train_mags  = train_df[target_col].values
+        coeff_b = float(np.mean(train_log_e - coeff_a * train_mags))
+        print(f"[Physics] Dynamically fitted GR intercept on TRAIN only: b = {coeff_b:.4f} (log10(E) = {coeff_a}*M + ({coeff_b:.4f}))")
+
     train_config = {
         "epochs":           training_cfg["epochs"],
         "learning_rate":    training_cfg["learning_rate"],
@@ -448,11 +456,12 @@ def _run_presplit_pipeline(config: dict) -> dict:
         "scheduler":        training_cfg.get("scheduler",    "cosine"),
         "use_physics":      physics_cfg.get("enabled",          True),
         "physics_experiment": physics_exp,
+        "energy_mode":      physics_cfg.get("energy_mode",     "gr_absolute"),
         "use_uncertainty":  model_cfg.get("use_uncertainty",   False),
         "lambda_energy":    physics_cfg.get("lambda_energy",     0.05),
         "lambda_frequency": physics_cfg.get("lambda_frequency",  0.0),
-        "energy_coeff_a":   physics_cfg.get("energy_coeff_a",   1.5),
-        "energy_coeff_b":   physics_cfg.get("energy_coeff_b",   3.863),
+        "energy_coeff_a":   coeff_a,
+        "energy_coeff_b":   coeff_b,
         "epsilon":          physics_cfg.get("epsilon",         1e-8),
         "physics_annealing":physics_cfg.get("annealing",       False),
     }
@@ -843,6 +852,14 @@ def run_pipeline(config: dict) -> dict:
     if not physics_cfg.get("enabled", True):
         physics_exp = "none"
 
+    coeff_a = physics_cfg.get("energy_coeff_a", 1.5)
+    coeff_b = physics_cfg.get("energy_coeff_b", -3.8633)
+    if physics_cfg.get("fit_intercept_on_train", True) and energy_col in X_train_df.columns:
+        train_log_e = np.log10(np.abs(X_train_df[energy_col].values) + physics_cfg.get("epsilon", 1e-8))
+        train_mags  = y_train_s.values
+        coeff_b = float(np.mean(train_log_e - coeff_a * train_mags))
+        print(f"[Physics] Dynamically fitted GR intercept on TRAIN only: b = {coeff_b:.4f} (log10(E) = {coeff_a}*M + ({coeff_b:.4f}))")
+
     train_config = {
         "epochs":           training_cfg["epochs"],
         "learning_rate":    training_cfg["learning_rate"],
@@ -854,11 +871,12 @@ def run_pipeline(config: dict) -> dict:
         "scheduler":        training_cfg.get("scheduler",    "plateau"),
         "use_physics":      physics_cfg.get("enabled",          True),
         "physics_experiment": physics_exp,
+        "energy_mode":      physics_cfg.get("energy_mode",     "correlation"),
         "use_uncertainty":  model_cfg.get("use_uncertainty",   False),
         "lambda_energy":    physics_cfg.get("lambda_energy",     0.1),
         "lambda_frequency": physics_cfg.get("lambda_frequency",  0.0),
-        "energy_coeff_a":   physics_cfg.get("energy_coeff_a",   1.5),
-        "energy_coeff_b":   physics_cfg.get("energy_coeff_b",   4.8),
+        "energy_coeff_a":   coeff_a,
+        "energy_coeff_b":   coeff_b,
         "epsilon":          physics_cfg.get("epsilon",         1e-8),
         "physics_annealing":physics_cfg.get("annealing",       False),
     }

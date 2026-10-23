@@ -1,30 +1,25 @@
 """
 energy_constraint.py
 --------------------
-Implements the Gutenberg–Richter energy–magnitude scaling law as a
-differentiable physics constraint for PINN training.
+Implements differentiable seismic energy constraints for PINN training:
 
-Seismological Relationship:
-    log₁₀(E) = 1.5 * M + 4.8
+1. "correlation" mode (Proportionality constraint):
+   Enforces that predicted magnitude positively correlates with log₁₀(energy).
+   Standardises both quantities to zero-mean unit-variance and penalises
+   the MSE between them (equivalent to penalising 2 * (1 - Pearson_r)).
+   Coefficients a and b are NOT used in this mode.
 
-Where:
-    E = seismic energy (from the 'energy' feature in the dataset)
-    M = earthquake magnitude (predicted by the model)
-
-Implementation Note:
-    The 'energy' feature in this dataset is NOT the total seismic energy
-    in Joules — it is a P-wave feature proportional to ∫a²(t)dt computed
-    from the first 3 seconds. Therefore, the Gutenberg–Richter coefficients
-    (a=1.5, b=4.8) do not directly apply to the raw feature values.
-
-    Instead, we enforce the PROPORTIONALITY constraint:
-        log₁₀(E_feature) ∝ M
-
-    This is implemented as a soft monotonic constraint that penalises
-    deviations from a linear relationship between log₁₀(energy) and
-    predicted magnitude, allowing the model to learn the correct
-    intercept and slope from data while the physics regularises the
-    direction of the relationship.
+2. "gr_absolute" mode (Gutenberg–Richter scaling law):
+   Enforces:
+       log₁₀(E) = a * M + b
+   where:
+       E = seismic energy feature (raw waveform integral proxy)
+       M = predicted magnitude
+       a = scaling slope (default 1.5)
+       b = intercept (calibrated on training data; sign convention: log10(E) = 1.5*M + b)
+   Constraint residual:
+       residual = log₁₀(E) - (a * M + b)
+       loss = mean(residual ** 2)
 
 Reference:
     Gutenberg, B. and Richter, C.F. (1956). Magnitude and Energy of
@@ -37,41 +32,38 @@ import torch
 def energy_magnitude_loss(
     pred_magnitude: torch.Tensor,
     raw_energy: torch.Tensor,
+    energy_mode: str = "correlation",
     coeff_a: float = 1.5,
-    coeff_b: float = 4.8,
+    coeff_b: float = -3.8633,
     epsilon: float = 1e-8,
 ) -> torch.Tensor:
     """Compute the energy–magnitude constraint loss.
 
-    Enforces the monotonic relationship between log₁₀(energy) and
-    magnitude. Uses a correlation-based loss that penalises when the
-    predicted magnitude does not track with observed energy.
-
-    The loss has two components:
-    1. A correlation penalty: ensures pred_mag and log_energy move together
-    2. A scaled residual: penalises large deviations from the linear fit
-
     Args:
-        pred_magnitude: Predicted magnitude tensor of shape (batch_size, 1)
-                       or (batch_size,).
-        raw_energy: Raw (un-normalised) seismic energy values of shape
-                   (batch_size,).
-        coeff_a: Multiplicative coefficient for scaling (used for gradient
-                direction). Default 1.5.
-        coeff_b: Not used in the correlation-based formulation but kept
-                for API compatibility.
-        epsilon: Small constant for numerical stability in log₁₀.
+        pred_magnitude: Predicted magnitude tensor (batch_size,) or (batch_size, 1).
+        raw_energy: Raw seismic energy proxy values (batch_size,).
+        energy_mode: "correlation" (Pearson correlation proxy) | "gr_absolute" (G-R law).
+        coeff_a: Slope a in log10(E) = a*M + b (used in "gr_absolute" mode).
+        coeff_b: Intercept b in log10(E) = a*M + b (used in "gr_absolute" mode).
+                 Sign convention note: log10(E) = a*M + b, where b is typically
+                 negative (~ -3.863) for P-wave waveform energy integrals.
+        epsilon: Small constant for numerical stability in log10.
 
     Returns:
-        Scalar tensor: mean squared constraint violation.
+        Scalar tensor: constraint loss penalty.
     """
-    # Ensure pred_magnitude is 1-D
     pred_mag = pred_magnitude.squeeze()
-
-    # Compute log₁₀(energy) from raw features
     log_energy = torch.log10(torch.abs(raw_energy) + epsilon)
 
-    # Standardise both to zero-mean, unit-variance for fair comparison
+    if energy_mode == "gr_absolute":
+        # Direct Gutenberg-Richter relation: log10(E) = a * M + b
+        # Expected log10(E) given predicted magnitude
+        expected_log_e = coeff_a * pred_mag + coeff_b
+        residual = log_energy - expected_log_e
+        return torch.mean(residual ** 2)
+
+    # Default: "correlation" mode (proportionality without scale/offset assumptions)
+    # Standardise both to zero-mean, unit-variance across the batch
     log_e_mean = log_energy.mean()
     log_e_std = log_energy.std() + epsilon
     log_e_norm = (log_energy - log_e_mean) / log_e_std
@@ -80,12 +72,6 @@ def energy_magnitude_loss(
     pred_std = pred_mag.std() + epsilon
     pred_norm = (pred_mag - pred_mean) / pred_std
 
-    # The physics says these should be positively correlated with
-    # slope ≈ 1.5. Enforce this by penalising the squared difference
-    # between the normalised quantities scaled by the expected slope.
-    expected = coeff_a * pred_norm
-    residual = log_e_norm - expected
-
-    loss = torch.mean(residual ** 2)
-
+    # MSE between normalised variables = 2 * (1 - Pearson_r)
+    loss = torch.mean((log_e_norm - pred_norm) ** 2)
     return loss

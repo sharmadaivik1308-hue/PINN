@@ -59,6 +59,7 @@ training:
 # --- Physics Constraints ---
 physics:
   enabled: true
+  energy_mode: "gr_absolute"    # Gutenberg-Richter log10(E_raw) = a*M + b
   experiment: "energy"          # energy-magnitude constraint only
 
   lambda_energy: 0.05           # reduced (weaker signal than original assumption)
@@ -69,9 +70,10 @@ physics:
   frequency_feature:  "spectral_centroid"
 
   # Dataset-calibrated GR intercept (fitted on train.csv by preprocessing_report.json)
-  # log10(E_raw) = 1.5*M + (-3.863)   [not the textbook 4.8 which assumes absolute Joules]
+  # log10(E_raw) = 1.5*M + (-3.8633)   [sign convention: log10(E) = a*M + b]
   energy_coeff_a: 1.5
-  energy_coeff_b: 3.863
+  energy_coeff_b: -3.8633
+  fit_intercept_on_train: true
 
   epsilon: 1.0e-8
   annealing: false

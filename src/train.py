@@ -174,8 +174,9 @@ def train_optimized(
     use_uncertainty   = config.get("use_uncertainty",    False)
     lambda_energy     = config.get("lambda_energy",      0.1)
     lambda_frequency  = config.get("lambda_frequency",   0.0)
+    energy_mode       = config.get("energy_mode",        "correlation")
     energy_coeff_a    = config.get("energy_coeff_a",     1.5)
-    energy_coeff_b    = config.get("energy_coeff_b",     4.8)
+    energy_coeff_b    = config.get("energy_coeff_b",     -3.8633)
     epsilon           = config.get("epsilon",            1e-8)
     physics_exp       = config.get("physics_experiment", "energy")
     physics_annealing = config.get("physics_annealing",  False)
@@ -287,6 +288,7 @@ def train_optimized(
                     raw_frequency    = batch_f.squeeze(),
                     lambda_energy    = lambda_energy * anneal,
                     lambda_frequency = lambda_frequency * anneal,
+                    energy_mode      = energy_mode,
                     energy_coeff_a   = energy_coeff_a,
                     energy_coeff_b   = energy_coeff_b,
                     epsilon          = epsilon,

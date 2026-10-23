@@ -55,6 +55,7 @@ training:
 # --- Physics Constraints ---
 physics:
   enabled: true
+  energy_mode: "correlation"       # "correlation" (Pearson correlation proxy) | "gr_absolute" (log10(E) = a*M + b)
 
   # Experiment mode for the main run:
   #   "none"   — pure data-driven (no physics)
@@ -70,9 +71,11 @@ physics:
   energy_feature: "energy"
   frequency_feature: "spectral_centroid"
 
-  # Gutenberg-Richter: log10(E) = a*M + b
+  # Gutenberg-Richter scaling: log10(E) = a*M + b
+  # Sign convention: b is intercept (e.g. -3.863 for waveform energy integrals)
   energy_coeff_a: 1.5
-  energy_coeff_b: 4.8
+  energy_coeff_b: -3.8633
+  fit_intercept_on_train: true     # dynamically fit b = mean(log10(E_train) - a*M_train)
 
   epsilon: 1.0e-8
   annealing: false
