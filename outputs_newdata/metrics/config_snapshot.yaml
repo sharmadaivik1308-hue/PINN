@@ -1,0 +1,52 @@
+ablation:
+  enabled: false
+cross_validation:
+  enabled: false
+dataset:
+  mode: pre_split
+  physics_raw_energy_col: log10_energy_raw
+  random_state: 42
+  scale_target: true
+  target_column: magnitude
+  test_csv: newdata(claude)/test.csv
+  train_csv: newdata(claude)/train.csv
+  val_csv: newdata(claude)/val.csv
+model:
+  activation: gelu
+  dropout: 0.15
+  hidden_layers:
+  - 256
+  - 128
+  - 64
+  input_dim: null
+  use_attention: true
+  use_batch_norm: false
+  use_layer_norm: true
+  use_residual: true
+  use_uncertainty: false
+output:
+  metrics_dir: outputs_newdata/metrics
+  model_dir: outputs_newdata/model
+  plots_dir: outputs_newdata/plots
+  reports_dir: outputs_newdata/reports
+physics:
+  annealing: false
+  enabled: true
+  energy_coeff_a: 1.5
+  energy_coeff_b: 3.863
+  energy_feature: energy
+  epsilon: 1.0e-08
+  experiment: energy
+  frequency_feature: spectral_centroid
+  lambda_energy: 0.05
+  lambda_frequency: 0.0
+training:
+  batch_size: 64
+  epochs: 1000
+  grad_clip: 1.0
+  learning_rate: 0.001
+  patience: 150
+  print_every: 50
+  scheduler: plateau
+  scheduler_plateau_patience: 30
+  weight_decay: 0.0001

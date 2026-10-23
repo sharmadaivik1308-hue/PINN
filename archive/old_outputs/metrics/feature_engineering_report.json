@@ -1,0 +1,61 @@
+{
+    "original_features": 29,
+    "removed_degenerate": [
+        "dominant_freq",
+        "predominant_period",
+        "zero_crossings"
+    ],
+    "removed_redundant": [
+        "max_val",
+        "envelope_peak",
+        "mean",
+        "abs_mean",
+        "cav",
+        "p90",
+        "p95",
+        "arias",
+        "spectral_energy"
+    ],
+    "added_features": [
+        "log_spectral_centroid",
+        "energy_per_duration",
+        "log_energy_per_duration",
+        "pga_energy_ratio",
+        "log_pga",
+        "bandwidth_centroid_ratio",
+        "kurtosis_skewness",
+        "range_rms_ratio",
+        "iqr_std_ratio",
+        "log_energy_sq"
+    ],
+    "final_features": [
+        "pga",
+        "rms",
+        "energy",
+        "std",
+        "skewness",
+        "kurtosis",
+        "min_val",
+        "range",
+        "median",
+        "spectral_centroid",
+        "bandwidth",
+        "duration",
+        "rise_time",
+        "p25",
+        "p75",
+        "iqr",
+        "log_energy",
+        "log_spectral_centroid",
+        "energy_per_duration",
+        "log_energy_per_duration",
+        "pga_energy_ratio",
+        "log_pga",
+        "bandwidth_centroid_ratio",
+        "kurtosis_skewness",
+        "range_rms_ratio",
+        "iqr_std_ratio",
+        "log_energy_sq"
+    ],
+    "final_feature_count": 27
+}

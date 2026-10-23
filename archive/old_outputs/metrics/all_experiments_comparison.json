@@ -1,0 +1,30 @@
+{
+    "baseline_mlp": {
+        "MAE": 0.501416,
+        "RMSE": 0.697402,
+        "R2": -0.360689,
+        "training_time_seconds": 3.35,
+        "num_parameters": 14209
+    },
+    "basic_pinn": {
+        "MAE": 0.511385,
+        "RMSE": 0.67054,
+        "R2": -0.257887,
+        "training_time_seconds": 1.4,
+        "num_parameters": 14209
+    },
+    "attention_pinn": {
+        "MAE": 0.50363,
+        "RMSE": 0.638781,
+        "R2": -0.141555,
+        "training_time_seconds": 2.03,
+        "num_parameters": 15079
+    },
+    "full_pinn": {
+        "MAE": 0.497057,
+        "RMSE": 0.61602,
+        "R2": -0.061653,
+        "training_time_seconds": 2.0,
+        "num_parameters": 15112
+    }
+}

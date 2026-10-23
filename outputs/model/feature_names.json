@@ -1,0 +1,21 @@
+[
+  "pga",
+  "energy",
+  "skewness",
+  "kurtosis",
+  "max_val",
+  "range",
+  "median",
+  "cav",
+  "zero_crossings",
+  "spectral_centroid",
+  "spectral_energy",
+  "bandwidth",
+  "duration",
+  "envelope_peak",
+  "rise_time",
+  "p75",
+  "iqr",
+  "p95",
+  "log_energy"
+]

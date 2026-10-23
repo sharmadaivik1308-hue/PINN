@@ -1,0 +1,7 @@
+{
+    "MAE": 0.501416,
+    "RMSE": 0.697402,
+    "R2": -0.360689,
+    "training_time_seconds": 3.35,
+    "num_parameters": 14209
+}

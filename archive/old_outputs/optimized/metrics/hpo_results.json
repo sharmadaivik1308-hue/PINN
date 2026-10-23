@@ -1,0 +1,19 @@
+{
+    "best_r2": -Infinity,
+    "best_params": {
+        "lr": 0.005074439403532432,
+        "weight_decay": 6.371834565823995e-06,
+        "batch_size": 64,
+        "dropout": 0.1122920750013838,
+        "activation": "silu",
+        "use_residual": true,
+        "use_layer_norm": true,
+        "n_layers": 3,
+        "layer_0_size": 64,
+        "layer_1_size": 256,
+        "layer_2_size": 128,
+        "lambda_energy": 0.11712190914674092,
+        "lambda_frequency": 0.03139962832724998
+    },
+    "n_trials": 20
+}

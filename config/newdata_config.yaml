@@ -1,0 +1,92 @@
+# ==============================================================================
+# newdata_config.yaml
+# -------------------
+# Configuration for the improved training run using newdata(claude)/.
+#
+# Key differences from config.yaml:
+#   - mode: pre_split  → loads train/val/test.csv directly (already split by
+#     event and feature-scaled); skips split + feature-scaler steps.
+#   - 49 features (auto-detected from CSVs) vs original 19.
+#   - Bigger network [256,128,64] to match the larger feature set.
+#   - Longer training: patience 150, cosine LR, 1000 epochs.
+#   - Dataset-calibrated GR intercept (-3.863) instead of textbook 4.8.
+#   - Ablation + CV disabled (event-based split breaks random k-fold).
+#   - Outputs go to outputs_newdata/ (does not touch outputs/).
+#
+# NOTE on classification reframe:
+#   Val events (M=4.6, 5.7) and test events (M=4.2, 5.2) are completely absent
+#   from training, so hard classification cannot predict them. Regression is kept.
+# ==============================================================================
+
+# --- Dataset (pre-split mode) ---
+dataset:
+  mode: "pre_split"                        # signals the pipeline to skip split/scale steps
+  train_csv: "newdata(claude)/train.csv"
+  val_csv:   "newdata(claude)/val.csv"
+  test_csv:  "newdata(claude)/test.csv"
+  target_column: "magnitude"
+  physics_raw_energy_col: "log10_energy_raw"   # raw (unscaled) column for GR physics loss
+
+  # Target scaling: still fitted on train magnitudes only
+  scale_target: true
+  random_state: 42
+
+# --- Model Architecture ---
+model:
+  input_dim: null               # auto-detected from CSV columns
+  hidden_layers: [256, 128, 64] # larger than original [64,32,16]; matches 49-feature input
+  activation: "gelu"
+  dropout: 0.15                 # slightly lower than 0.2 — model is underfitting not overfitting
+  use_layer_norm: true
+  use_batch_norm: false
+  use_residual: true
+  use_attention: true
+  use_uncertainty: false
+
+# --- Training ---
+training:
+  epochs: 1000
+  learning_rate: 0.001
+  batch_size: 64
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  patience: 150                 # was 50 — model was stopping at epoch 75
+  scheduler: "plateau"          # plateau with patience=30 below; cosine warm-restarts
+                                # (T_0=50) caused LR spikes every 50 epochs that wrecked val
+  scheduler_plateau_patience: 30  # halve LR after 30 epochs of no improvement
+  print_every: 50
+
+# --- Physics Constraints ---
+physics:
+  enabled: true
+  experiment: "energy"          # energy-magnitude constraint only
+
+  lambda_energy: 0.05           # reduced (weaker signal than original assumption)
+  lambda_frequency: 0.0         # frequency constraint stays off (r=-0.058)
+
+  # energy_feature is unused in pre_split mode (log10_energy_raw used directly)
+  energy_feature:     "energy"
+  frequency_feature:  "spectral_centroid"
+
+  # Dataset-calibrated GR intercept (fitted on train.csv by preprocessing_report.json)
+  # log10(E_raw) = 1.5*M + (-3.863)   [not the textbook 4.8 which assumes absolute Joules]
+  energy_coeff_a: 1.5
+  energy_coeff_b: 3.863
+
+  epsilon: 1.0e-8
+  annealing: false
+
+# --- Ablation Study ---
+ablation:
+  enabled: false    # disabled: event-based split makes per-experiment tensor reuse tricky
+
+# --- Cross-Validation ---
+cross_validation:
+  enabled: false    # disabled: event-based split breaks random k-fold (would re-mix events)
+
+# --- Output Paths (separate from original outputs/) ---
+output:
+  model_dir:   "outputs_newdata/model"
+  metrics_dir: "outputs_newdata/metrics"
+  plots_dir:   "outputs_newdata/plots"
+  reports_dir: "outputs_newdata/reports"

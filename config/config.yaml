@@ -1,0 +1,93 @@
+# ==============================================================================
+# Physics-Informed Neural Network (PINN) — Configuration
+# Earthquake Magnitude Prediction
+# ==============================================================================
+# All hyperparameters, model settings, and physics weights are controlled here.
+# Override any value from the CLI:
+#   python main.py --lr 0.001 --epochs 500
+# ==============================================================================
+
+# --- Dataset ---
+dataset:
+  path: "data/earthquake_29_features.csv"
+  target_column: "magnitude"
+
+  # Only drop static non-feature identifiers here.
+  # Degenerate and redundant features are detected automatically.
+  drop_columns: ["filename"]
+
+  # 3-way split: train (70%) / val (15%) / test (15%)
+  val_size: 0.15
+  test_size: 0.15
+  random_state: 42
+
+  # Target scaling: strongly recommended — only 11 unique magnitude values
+  scale_target: true
+
+  # Automatic feature quality thresholds
+  variance_threshold: 1.0e-6      # features below this variance are removed
+  correlation_threshold: 0.95     # |r| above this → keep only the representative
+
+# --- Model Architecture ---
+model:
+  input_dim: null           # auto-detected from data after feature audit
+  hidden_layers: [64, 32, 16]  # conservative start for ~2500 samples
+  activation: "gelu"
+  dropout: 0.1
+  use_layer_norm: true
+  use_batch_norm: false
+  use_residual: true
+  use_attention: true
+  use_uncertainty: false
+
+# --- Training ---
+training:
+  epochs: 500
+  learning_rate: 0.001
+  batch_size: 64
+  weight_decay: 0.0001
+  grad_clip: 1.0
+  patience: 50
+  scheduler: "plateau"      # "plateau" | "cosine" | "none"
+  print_every: 20
+
+# --- Physics Constraints ---
+physics:
+  enabled: true
+
+  # Experiment mode for the main run:
+  #   "none"   — pure data-driven (no physics)
+  #   "energy" — energy-magnitude constraint only (default, recommended)
+  #   "full"   — energy + frequency constraints
+  experiment: "energy"
+
+  lambda_energy: 0.1
+  # Frequency constraint disabled by default (spectral_centroid r=-0.058 too weak)
+  lambda_frequency: 0.0
+
+  # Feature names used by physics constraints (must match CSV column names)
+  energy_feature: "energy"
+  frequency_feature: "spectral_centroid"
+
+  # Gutenberg-Richter: log10(E) = a*M + b
+  energy_coeff_a: 1.5
+  energy_coeff_b: 4.8
+
+  epsilon: 1.0e-8
+  annealing: false
+
+# --- Ablation Study ---
+ablation:
+  enabled: true             # set false to skip (saves time)
+
+# --- Cross-Validation ---
+cross_validation:
+  enabled: true
+  folds: 5
+
+# --- Output Paths ---
+output:
+  model_dir: "outputs/model"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"
+  reports_dir: "outputs/reports"

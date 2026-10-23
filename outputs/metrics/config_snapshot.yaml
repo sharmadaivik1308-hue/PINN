@@ -1,0 +1,54 @@
+ablation:
+  enabled: true
+cross_validation:
+  enabled: true
+  folds: 5
+dataset:
+  correlation_threshold: 0.95
+  drop_columns:
+  - filename
+  path: data/earthquake_29_features.csv
+  random_state: 42
+  scale_target: true
+  target_column: magnitude
+  test_size: 0.15
+  val_size: 0.15
+  variance_threshold: 1.0e-06
+model:
+  activation: gelu
+  dropout: 0.1
+  hidden_layers:
+  - 64
+  - 32
+  - 16
+  input_dim: null
+  use_attention: true
+  use_batch_norm: false
+  use_layer_norm: true
+  use_residual: true
+  use_uncertainty: false
+output:
+  metrics_dir: outputs/metrics
+  model_dir: outputs/model
+  plots_dir: outputs/plots
+  reports_dir: outputs/reports
+physics:
+  annealing: false
+  enabled: true
+  energy_coeff_a: 1.5
+  energy_coeff_b: 4.8
+  energy_feature: energy
+  epsilon: 1.0e-08
+  experiment: energy
+  frequency_feature: spectral_centroid
+  lambda_energy: 0.1
+  lambda_frequency: 0.0
+training:
+  batch_size: 64
+  epochs: 500
+  grad_clip: 1.0
+  learning_rate: 0.001
+  patience: 50
+  print_every: 20
+  scheduler: plateau
+  weight_decay: 0.0001

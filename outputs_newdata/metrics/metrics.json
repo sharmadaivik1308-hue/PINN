@@ -1,0 +1,10 @@
+{
+    "MAE": 0.454448,
+    "RMSE": 0.596397,
+    "R2": -0.498263,
+    "training_time_seconds": 28.73,
+    "num_parameters": 112354,
+    "actual_epochs": 151,
+    "best_val_loss": 0.598085,
+    "device": "cpu"
+}
