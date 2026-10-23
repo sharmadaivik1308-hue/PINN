@@ -584,22 +584,36 @@ def _run_presplit_pipeline(config: dict) -> dict:
     total_time = time.time() - pipeline_start
     avg_epoch  = (sum(history["epoch_time"]) / max(1, len(history["epoch_time"])))
 
+    # Compute actual event and magnitude differences across splits (D3)
+    train_mags_set = set(np.round(train_df[target_col].unique(), 2))
+    val_mags_set   = set(np.round(val_df[target_col].unique(), 2))
+    test_mags_set  = set(np.round(test_df[target_col].unique(), 2))
+    val_unseen     = sorted(list(val_mags_set - train_mags_set))
+    test_unseen    = sorted(list(test_mags_set - train_mags_set))
+
+    train_ev_set = set(train_df["event_id"].unique()) if "event_id" in train_df.columns else set()
+    val_ev_set   = set(val_df["event_id"].unique()) if "event_id" in val_df.columns else set()
+    test_ev_set  = set(test_df["event_id"].unique()) if "event_id" in test_df.columns else set()
+
+    num_feat = len(feature_names)
+    layers_str = str(model_config.get("hidden_layers", []))
+
     write_audit_report(
         path = os.path.join(reports_dir, "MODEL_TRAINING_AUDIT.md"),
         problems_found = [
             "Original model stopped at epoch 75/500 (early stopping too tight)",
-            "Network [64,32,16] too small for 49-feature input",
-            "GR intercept b=4.8 assumed absolute Joules; dataset uses waveform proxy",
+            f"Original architecture too small for larger {num_feat}-feature input",
+            "GR intercept assumed textbook absolute Joules; dataset uses waveform proxy",
             "Random row-split leaked correlated multi-station recordings of same event",
-            "Only 19 of 29 features used; log1p transforms not applied",
+            "Original run used only subset of features without log1p transforms",
         ],
         fixes_applied = [
-            "Pre-split data: train/val/test separated by event ID (no leakage)",
-            "49 features used (all numeric columns incl. log1p-transformed variants)",
-            "Network enlarged to [256,128,64]; dropout 0.2",
-            "patience=150, cosine LR scheduler, 1000 epochs",
-            "GR intercept updated to dataset-calibrated c=-3.863 (slope=1.5 fixed)",
-            "lambda_energy reduced to 0.05 (weaker physics signal)",
+            "Pre-split data: train/val/test separated by event ID (no event leakage)",
+            f"{num_feat} features used (all numeric columns incl. log1p-transformed variants)",
+            f"Network configured to {layers_str}; dropout {model_cfg.get('dropout', 0.2)}",
+            f"patience={training_cfg.get('patience', 150)}, scheduler={training_cfg.get('scheduler', 'plateau')}, {training_cfg.get('epochs', 1000)} epochs",
+            f"GR intercept dynamically fitted on train only: b={coeff_b:.4f} (slope={coeff_a})",
+            f"lambda_energy calibrated to {training_cfg.get('lambda_energy', 0.05)}",
             "log10_energy_raw converted to linear before physics constraint",
         ],
         dataset_info = {
@@ -607,16 +621,16 @@ def _run_presplit_pipeline(config: dict) -> dict:
             "Val samples":    len(val_df),
             "Test samples":   len(test_df),
             "Split strategy": "Event-based (no station bleed-through)",
-            "Train events":   "8 events",
-            "Val events":     "2 events (M=4.6, 5.7 — unseen in train)",
-            "Test events":    "2 events (M=4.2, 5.2 — unseen in train)",
-            "Feature count":  len(feature_names),
+            "Train events":   f"{len(train_ev_set)} events" if train_ev_set else "N/A",
+            "Val events":     f"{len(val_ev_set)} events (unseen mags: {val_unseen})" if val_ev_set else "N/A",
+            "Test events":    f"{len(test_ev_set)} events (unseen mags: {test_unseen})" if test_ev_set else "N/A",
+            "Feature count":  num_feat,
             "Target range":   f"[{y_train_s.min():.2f}, {y_train_s.max():.2f}] (train)",
         },
         feature_info = {
             "Degenerate removed":  "0 (handled upstream in preprocessing_report)",
-            "Correlated removed":  "0 (model uses all 49 features)",
-            "Final feature count": len(feature_names),
+            "Correlated removed":  f"0 (model uses all {num_feat} features)",
+            "Final feature count": num_feat,
         },
         split_info = {
             "Train": f"{len(train_df)} samples (event-based)",
@@ -633,13 +647,13 @@ def _run_presplit_pipeline(config: dict) -> dict:
             "Weight decay":   training_cfg.get("weight_decay", 1e-4),
             "Dropout":        model_cfg.get("dropout", 0.2),
             "Early stopping": f"patience = {training_cfg.get('patience', 150)}",
-            "LR scheduler":   training_cfg.get("scheduler", "cosine"),
+            "LR scheduler":   training_cfg.get("scheduler", "plateau"),
         },
         physics_audit = {
-            "Energy constraint":  "Gutenberg-Richter proportionality (log10(E) ~ 1.5*M + c)",
-            "GR intercept c":     f"{physics_cfg.get('energy_coeff_b', 3.863)} (dataset-fitted)",
+            "Energy constraint":  f"Gutenberg-Richter scaling ({energy_mode})",
+            "GR intercept c":     f"{coeff_b:.4f} (dynamically train-fitted)",
             "Physics column":     phys_raw_col,
-            "lambda_energy":      physics_cfg.get("lambda_energy", 0.05),
+            "lambda_energy":      train_config.get("lambda_energy", 0.05),
             "Frequency":          "Disabled (lambda_frequency=0)",
         },
         timing_info = {
@@ -653,9 +667,10 @@ def _run_presplit_pipeline(config: dict) -> dict:
         ablation_table   = "",
         cv_summary       = {},
         limitations = [
-            "Val/test events have magnitudes (4.6, 5.7, 4.2, 5.2) absent from training",
+            f"Val events have magnitudes absent from training: {val_unseen}",
+            f"Test events have magnitudes absent from training: {test_unseen}",
             "P-wave 3-second features still limited predictors of final magnitude",
-            "49 features include many correlated pairs; attention handles but not optimal",
+            f"{num_feat} features include correlated pairs; attention module weights features dynamically",
             "Waveform energy proxy != absolute seismic energy — GR law approximate",
         ],
     )
