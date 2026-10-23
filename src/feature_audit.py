@@ -1,4 +1,4 @@
-﻿"""
+"""
 feature_audit.py
 ----------------
 Automated feature quality analysis for the earthquake PINN pipeline.
@@ -81,6 +81,12 @@ def detect_degenerate_features(
             )
 
     features_to_remove = list(removal_reasons.keys())
+
+    # Check for specific known extraction bugs (C1)
+    zero_freq_features = [f for f in ["dominant_freq", "predominant_period"] if f in removal_reasons]
+    if zero_freq_features:
+        print(f"\n[FeatureAudit] ⚠️ WARNING: {zero_freq_features} are 0.0 for all rows (extraction bug in upstream dataset).")
+        print("  -> Raw waveforms not present in repo; frequency constraint must rely on 'spectral_centroid' proxy.")
 
     print(f"\n[FeatureAudit] Degenerate scan — {len(X.columns)} features checked")
     if features_to_remove:
@@ -311,6 +317,14 @@ def generate_feature_report(
         for f in degenerate_removed:
             L.append(f"| `{f}` | {degenerate_reasons.get(f, 'N/A')} |")
         L.append("")
+        if any(f in degenerate_removed for f in ["dominant_freq", "predominant_period"]):
+            L += [
+                "> **Extraction Bug Notice (Frequency Features)**: `dominant_freq` and `predominant_period` "
+                "are 0.0 across all 2,497 rows due to upstream feature-extraction failure (e.g. FFT peak index / windowing bug). "
+                "Raw waveforms are not present in the repository to re-extract these features. Therefore, they are removed, "
+                "and any frequency physics constraint relies on `spectral_centroid` as proxy.",
+                "",
+            ]
     else:
         L += ["_None detected._", ""]
 
